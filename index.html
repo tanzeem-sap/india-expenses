@@ -188,6 +188,7 @@
       </div>
     </form>
     <div id="fundList"></div>
+    <p class="muted-note"><strong>Funds available</strong> = funds added − spending. Expenses paid via <strong>US Credit Card</strong> still count in <strong>Total spent</strong> but do <strong>not</strong> deplete your funds.</p>
   </div>
 
   <div class="panel">
@@ -327,9 +328,12 @@ function fundKey(f) {
   return [f.date, String(f.note || "").trim().toLowerCase(), (+f.amount).toFixed(2)].join("|");
 }
 // Wallet math
+const NON_WALLET = "US Credit Card";  // paid from US account — does NOT deplete India funds
 function fundsTotal() { return funds.reduce((s, f) => s + (+f.amount), 0); }
 function spentTotal() { return items.reduce((s, i) => s + (+i.amount), 0); }
-function available() { return fundsTotal() - spentTotal(); }
+function walletSpent() { return items.reduce((s, i) => s + (i.source === NON_WALLET ? 0 : +i.amount), 0); }
+function usCardSpent() { return items.reduce((s, i) => s + (i.source === NON_WALLET ? +i.amount : 0), 0); }
+function available() { return fundsTotal() - walletSpent(); }
 function fmt(n) { return "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
 function getRate() { return parseFloat(localStorage.getItem(KEY_RATE)) || 85; }
 function usd(inr) {
@@ -530,13 +534,15 @@ function renderStats(list) {
   items.forEach(i => byLoc[i.location] = (byLoc[i.location]||0) + (+i.amount));
   const topLoc = Object.entries(byLoc).sort((a,b)=>b[1]-a[1])[0];
   const ft = fundsTotal();
-  const avail = ft - total;
+  const usCard = usCardSpent();
+  const avail = ft - (total - usCard);   // US-card spend does not deplete funds
   let availClass = "good";
   if (avail < 0) availClass = "bad";
   else if (ft > 0 && avail < ft * 0.1) availClass = "warn";
   document.getElementById("stats").innerHTML = `
     <div class="stat ${availClass}"><div class="label">Funds available</div><div class="value">${fmt(avail)}</div><div class="usd-sub">${usd(avail)}</div></div>
     <div class="stat"><div class="label">Total spent</div><div class="value">${fmt(total)}</div><div class="usd-sub">${usd(total)}</div></div>
+    <div class="stat"><div class="label">On US card</div><div class="value">${fmt(usCard)}</div><div class="usd-sub">${usd(usCard)} · not from funds</div></div>
     <div class="stat"><div class="label">Spent today</div><div class="value">${fmt(today)}</div><div class="usd-sub">${usd(today)}</div></div>
     <div class="stat"><div class="label">Total funds added</div><div class="value">${fmt(ft)}</div><div class="usd-sub">${usd(ft)}</div></div>
     <div class="stat"><div class="label">Showing (filtered)</div><div class="value">${fmt(filtered)}</div><div class="usd-sub">${usd(filtered)}</div></div>
