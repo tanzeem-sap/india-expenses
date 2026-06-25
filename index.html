@@ -95,6 +95,20 @@
   .banner button { padding: 7px 12px; font-size: .82rem; }
   .banner button.snooze { background: #fff; color: #92400e; border: 1px solid #fcd34d; }
   #ratePanel form { align-items: end; }
+
+  .bk-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+  .bk-tabs button {
+    background: #fff; color: var(--muted); border: 1px solid var(--line);
+    padding: 6px 12px; font-size: .82rem; font-weight: 600;
+  }
+  .bk-tabs button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .breakdown { display: flex; flex-direction: column; gap: 9px; }
+  .bk-row { display: grid; grid-template-columns: minmax(90px, 130px) 1fr minmax(96px, auto); gap: 12px; align-items: center; }
+  .bk-name { font-size: .85rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bk-bar { background: #eef2ff; border-radius: 6px; height: 22px; overflow: hidden; }
+  .bk-fill { height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--accent) 0%, #ff9f1c 100%); min-width: 3px; }
+  .bk-val { text-align: right; font-size: .85rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .bk-val .usd-sub { font-size: .68rem; }
   @media (max-width: 560px) {
     .hide-sm { display: none; }
   }
@@ -222,6 +236,18 @@
       <button class="secondary" id="clearBtn" style="color:#b91c1c;">Clear all</button>
     </div>
     <p class="muted-note">Data lives only in this browser (localStorage). Export to CSV regularly to back it up.</p>
+  </div>
+
+  <div class="panel">
+    <h2>📊 Breakdown</h2>
+    <div class="bk-tabs" id="bkTabs">
+      <button data-g="category" class="active">By category</button>
+      <button data-g="location">By location</button>
+      <button data-g="day">By day</button>
+      <button data-g="source">By payment</button>
+    </div>
+    <div class="breakdown" id="breakdown"></div>
+    <p class="muted-note">Reflects the rows currently shown (your search &amp; filters apply).</p>
   </div>
 
 </div>
@@ -374,18 +400,54 @@ function render() {
       </tr>`).join("");
   }
   renderStats(list);
+  renderBreakdown(list);
   updateBanner();
+}
+
+let groupBy = "category";
+document.getElementById("bkTabs").addEventListener("click", e => {
+  const btn = e.target.closest("button[data-g]");
+  if (!btn) return;
+  groupBy = btn.dataset.g;
+  document.querySelectorAll("#bkTabs button").forEach(b => b.classList.toggle("active", b === btn));
+  render();
+});
+
+function renderBreakdown(list) {
+  const keyFn = { category: i => i.category, location: i => i.location, day: i => i.date, source: i => i.source }[groupBy];
+  const map = {};
+  list.forEach(i => { const k = keyFn(i) || "—"; map[k] = (map[k] || 0) + (+i.amount); });
+  let entries = Object.entries(map);
+  // Days newest-first; everything else biggest-spend first.
+  entries.sort((a, b) => groupBy === "day" ? (a[0] < b[0] ? 1 : -1) : b[1] - a[1]);
+  const el = document.getElementById("breakdown");
+  if (entries.length === 0) { el.innerHTML = `<div class="empty">No data to break down yet.</div>`; return; }
+  const max = Math.max(...entries.map(e => e[1]));
+  const total = entries.reduce((s, e) => s + e[1], 0);
+  el.innerHTML = entries.map(([name, amt]) => {
+    const pct = total ? Math.round(amt / total * 100) : 0;
+    const w = max ? (amt / max * 100) : 0;
+    return `
+      <div class="bk-row">
+        <div class="bk-name" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+        <div class="bk-bar"><div class="bk-fill" style="width:${w}%"></div></div>
+        <div class="bk-val">${fmt(amt)}<div class="usd-sub">${usd(amt)} · ${pct}%</div></div>
+      </div>`;
+  }).join("");
 }
 
 function renderStats(list) {
   const total = items.reduce((s,i) => s + (+i.amount), 0);
   const filtered = list.reduce((s,i) => s + (+i.amount), 0);
+  const todayStr = new Date().toISOString().slice(0,10);
+  const today = items.reduce((s,i) => s + (i.date === todayStr ? +i.amount : 0), 0);
   const byLoc = {};
   items.forEach(i => byLoc[i.location] = (byLoc[i.location]||0) + (+i.amount));
   const topLoc = Object.entries(byLoc).sort((a,b)=>b[1]-a[1])[0];
   document.getElementById("stats").innerHTML = `
     <div class="stat"><div class="label">Total spent</div><div class="value">${fmt(total)}</div><div class="usd-sub">${usd(total)}</div></div>
     <div class="stat"><div class="label">Showing (filtered)</div><div class="value">${fmt(filtered)}</div><div class="usd-sub">${usd(filtered)}</div></div>
+    <div class="stat"><div class="label">Spent today</div><div class="value">${fmt(today)}</div><div class="usd-sub">${usd(today)}</div></div>
     <div class="stat"><div class="label">Entries</div><div class="value">${items.length}</div></div>
     <div class="stat"><div class="label">Top location</div><div class="value">${topLoc ? escapeHtml(topLoc[0]) : "—"}</div></div>
   `;
