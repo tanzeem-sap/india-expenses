@@ -109,6 +109,19 @@
   .bk-fill { height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--accent) 0%, #ff9f1c 100%); min-width: 3px; }
   .bk-val { text-align: right; font-size: .85rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
   .bk-val .usd-sub { font-size: .68rem; }
+  .bk-row { cursor: pointer; }
+  .bk-row:hover .bk-bar { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .banner.danger { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+  .banner.danger button.snooze { color: #991b1b; border-color: #fecaca; }
+  .stat.good .value { color: var(--accent2); }
+  .stat.warn .value { color: #b45309; }
+  .stat.bad .value  { color: #b91c1c; }
+
+  .fund-row { display: grid; grid-template-columns: 92px 1fr auto auto; gap: 10px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: .85rem; }
+  .fund-row .f-amt { text-align: right; font-variant-numeric: tabular-nums; color: var(--accent2); font-weight: 600; }
+  .fund-total { display: flex; justify-content: space-between; font-weight: 700; margin-top: 12px; padding-top: 8px; }
+  .toolbar .daterange { display: flex; align-items: center; gap: 4px; font-size: .78rem; color: var(--muted); }
   @media (max-width: 560px) {
     .hide-sm { display: none; }
   }
@@ -123,6 +136,10 @@
 </header>
 
 <div class="wrap">
+
+  <div class="banner" id="fundsBanner">
+    <span class="b-text" id="fundsText"></span>
+  </div>
 
   <div class="banner" id="backupBanner">
     <span class="b-text" id="backupText"></span>
@@ -148,6 +165,29 @@
         <span class="muted-note" id="rateNote" style="margin:0;"></span>
       </div>
     </form>
+  </div>
+
+  <div class="panel">
+    <h2>💰 Funds / Wallet</h2>
+    <form id="fundForm">
+      <div class="field">
+        <label for="fundDate">Date</label>
+        <input type="date" id="fundDate" required>
+      </div>
+      <div class="field" style="flex:2; grid-column: span 2;">
+        <label for="fundNote">Note (optional)</label>
+        <input type="text" id="fundNote" placeholder="e.g. Starting cash, ATM Delhi, Exchanged $200">
+      </div>
+      <div class="field">
+        <label for="fundAmount">Add amount (₹)</label>
+        <input type="number" id="fundAmount" step="0.01" min="0" placeholder="0.00" required>
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <button type="submit">➕ Add funds</button>
+      </div>
+    </form>
+    <div id="fundList"></div>
   </div>
 
   <div class="panel">
@@ -212,6 +252,9 @@
       <select id="filterLocation"><option value="">All locations</option></select>
       <select id="filterCategory"><option value="">All categories</option></select>
       <select id="filterSource"><option value="">All sources</option></select>
+      <span class="daterange">From <input type="date" id="filterFrom"></span>
+      <span class="daterange">To <input type="date" id="filterTo"></span>
+      <button class="secondary" id="clearFilters">Clear filters</button>
     </div>
     <div style="overflow-x:auto;">
       <table id="table">
@@ -254,12 +297,14 @@
 
 <script>
 const KEY = "india_expenses_v1";
+const KEY_FUNDS = "india_expenses_funds_v1";
 const KEY_RATE = "india_expenses_inr_per_usd";
 const KEY_RATE_AT = "india_expenses_rate_at";
 const KEY_BACKUP = "india_expenses_backup_at";
 const KEY_SNOOZE = "india_expenses_backup_snooze";
 const DAY = 86400000;
 let items = load();
+let funds = loadFunds();
 let sortKey = "date", sortDir = -1;
 let editingId = null;
 
@@ -268,11 +313,23 @@ function load() {
   catch { return []; }
 }
 function save() { localStorage.setItem(KEY, JSON.stringify(items)); }
+function loadFunds() {
+  try { return JSON.parse(localStorage.getItem(KEY_FUNDS)) || []; }
+  catch { return []; }
+}
+function saveFunds() { localStorage.setItem(KEY_FUNDS, JSON.stringify(funds)); }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 // Content fingerprint used to detect duplicate rows on import (ignores the random id).
 function dupeKey(i) {
   return [i.date, String(i.desc).trim().toLowerCase(), (+i.amount).toFixed(2), i.source, i.location, i.category].join("|");
 }
+function fundKey(f) {
+  return [f.date, String(f.note || "").trim().toLowerCase(), (+f.amount).toFixed(2)].join("|");
+}
+// Wallet math
+function fundsTotal() { return funds.reduce((s, f) => s + (+f.amount), 0); }
+function spentTotal() { return items.reduce((s, i) => s + (+i.amount), 0); }
+function available() { return fundsTotal() - spentTotal(); }
 function fmt(n) { return "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
 function getRate() { return parseFloat(localStorage.getItem(KEY_RATE)) || 85; }
 function usd(inr) {
@@ -332,8 +389,14 @@ function del(id) {
 }
 
 // ---- Filters & sorting ----
-["search","filterLocation","filterCategory","filterSource"].forEach(id =>
+["search","filterLocation","filterCategory","filterSource","filterFrom","filterTo"].forEach(id =>
   document.getElementById(id).addEventListener("input", render));
+
+document.getElementById("clearFilters").addEventListener("click", () => {
+  ["search","filterLocation","filterCategory","filterSource","filterFrom","filterTo"].forEach(id =>
+    document.getElementById(id).value = "");
+  render();
+});
 
 document.querySelectorAll("th[data-sort]").forEach(th =>
   th.addEventListener("click", () => {
@@ -347,11 +410,15 @@ function visibleItems() {
   const fl = document.getElementById("filterLocation").value;
   const fc = document.getElementById("filterCategory").value;
   const fs = document.getElementById("filterSource").value;
+  const from = document.getElementById("filterFrom").value;
+  const to = document.getElementById("filterTo").value;
   let list = items.filter(i =>
     (!q || i.desc.toLowerCase().includes(q)) &&
     (!fl || i.location === fl) &&
     (!fc || i.category === fc) &&
-    (!fs || i.source === fs)
+    (!fs || i.source === fs) &&
+    (!from || i.date >= from) &&
+    (!to || i.date <= to)
   );
   list.sort((a,b) => {
     let x = a[sortKey], y = b[sortKey];
@@ -401,6 +468,8 @@ function render() {
   }
   renderStats(list);
   renderBreakdown(list);
+  renderFunds();
+  updateFundsBanner();
   updateBanner();
 }
 
@@ -411,6 +480,22 @@ document.getElementById("bkTabs").addEventListener("click", e => {
   groupBy = btn.dataset.g;
   document.querySelectorAll("#bkTabs button").forEach(b => b.classList.toggle("active", b === btn));
   render();
+});
+
+// Tap a breakdown row to drill down: apply it as a filter on the list.
+document.getElementById("breakdown").addEventListener("click", e => {
+  const row = e.target.closest(".bk-row");
+  if (!row) return;
+  const name = row.dataset.name;
+  if (groupBy === "category") document.getElementById("filterCategory").value = name;
+  else if (groupBy === "location") document.getElementById("filterLocation").value = name;
+  else if (groupBy === "source") document.getElementById("filterSource").value = name;
+  else if (groupBy === "day") {
+    document.getElementById("filterFrom").value = name;
+    document.getElementById("filterTo").value = name;
+  }
+  render();
+  document.getElementById("table").scrollIntoView({ behavior: "smooth", block: "start" });
 });
 
 function renderBreakdown(list) {
@@ -428,8 +513,8 @@ function renderBreakdown(list) {
     const pct = total ? Math.round(amt / total * 100) : 0;
     const w = max ? (amt / max * 100) : 0;
     return `
-      <div class="bk-row">
-        <div class="bk-name" title="${escapeHtml(name)}">${escapeHtml(name)}</div>
+      <div class="bk-row" data-name="${escapeHtml(name)}" title="Tap to filter the list by this">
+        <div class="bk-name">${escapeHtml(name)}</div>
         <div class="bk-bar"><div class="bk-fill" style="width:${w}%"></div></div>
         <div class="bk-val">${fmt(amt)}<div class="usd-sub">${usd(amt)} · ${pct}%</div></div>
       </div>`;
@@ -444,11 +529,17 @@ function renderStats(list) {
   const byLoc = {};
   items.forEach(i => byLoc[i.location] = (byLoc[i.location]||0) + (+i.amount));
   const topLoc = Object.entries(byLoc).sort((a,b)=>b[1]-a[1])[0];
+  const ft = fundsTotal();
+  const avail = ft - total;
+  let availClass = "good";
+  if (avail < 0) availClass = "bad";
+  else if (ft > 0 && avail < ft * 0.1) availClass = "warn";
   document.getElementById("stats").innerHTML = `
+    <div class="stat ${availClass}"><div class="label">Funds available</div><div class="value">${fmt(avail)}</div><div class="usd-sub">${usd(avail)}</div></div>
     <div class="stat"><div class="label">Total spent</div><div class="value">${fmt(total)}</div><div class="usd-sub">${usd(total)}</div></div>
-    <div class="stat"><div class="label">Showing (filtered)</div><div class="value">${fmt(filtered)}</div><div class="usd-sub">${usd(filtered)}</div></div>
     <div class="stat"><div class="label">Spent today</div><div class="value">${fmt(today)}</div><div class="usd-sub">${usd(today)}</div></div>
-    <div class="stat"><div class="label">Entries</div><div class="value">${items.length}</div></div>
+    <div class="stat"><div class="label">Total funds added</div><div class="value">${fmt(ft)}</div><div class="usd-sub">${usd(ft)}</div></div>
+    <div class="stat"><div class="label">Showing (filtered)</div><div class="value">${fmt(filtered)}</div><div class="usd-sub">${usd(filtered)}</div></div>
     <div class="stat"><div class="label">Top location</div><div class="value">${topLoc ? escapeHtml(topLoc[0]) : "—"}</div></div>
   `;
 }
@@ -459,9 +550,10 @@ function escapeHtml(s) {
 
 // ---- CSV export / import ----
 document.getElementById("exportBtn").addEventListener("click", () => {
-  const header = ["date","description","amount","source","location","category"];
-  const rows = items.map(i => [i.date, i.desc, i.amount, i.source, i.location, i.category]);
-  const csv = [header, ...rows].map(r => r.map(csvCell).join(",")).join("\n");
+  const header = ["type","date","description","amount","source","location","category"];
+  const expRows = items.map(i => ["expense", i.date, i.desc, i.amount, i.source, i.location, i.category]);
+  const fundRows = funds.map(f => ["fund", f.date, f.note, f.amount, "", "", ""]);
+  const csv = [header, ...expRows, ...fundRows].map(r => r.map(csvCell).join(",")).join("\n");
   const blob = new Blob([csv], {type: "text/csv"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -486,28 +578,43 @@ document.getElementById("importFile").addEventListener("change", e => {
       const rows = parseCSV(reader.result);
       const header = rows.shift().map(h => h.toLowerCase().trim());
       const idx = n => header.indexOf(n);
+      const idxType = idx("type");
       const seen = new Set(items.map(dupeKey));
-      let added = 0, skipped = 0;
+      const seenF = new Set(funds.map(fundKey));
+      let added = 0, skipped = 0, fAdded = 0, fSkipped = 0;
       rows.forEach(r => {
         if (r.length === 1 && r[0] === "") return;
-        const item = {
-          id: uid(),
-          date: r[idx("date")] || "",
-          desc: r[idx("description")] || "",
-          amount: parseFloat(r[idx("amount")]) || 0,
-          source: r[idx("source")] || "Other",
-          location: r[idx("location")] || "Other",
-          category: r[idx("category")] || "Misc",
-        };
-        const key = dupeKey(item);
-        if (seen.has(key)) { skipped++; return; }   // already present — skip to avoid duplicates
-        seen.add(key);
-        items.push(item);
-        added++;
+        const type = idxType >= 0 ? (r[idxType] || "").toLowerCase().trim() : "expense";
+        if (type === "fund") {
+          const f = {
+            id: uid(),
+            date: r[idx("date")] || "",
+            amount: parseFloat(r[idx("amount")]) || 0,
+            note: r[idx("description")] || "",
+          };
+          const k = fundKey(f);
+          if (seenF.has(k)) { fSkipped++; return; }
+          seenF.add(k); funds.push(f); fAdded++;
+        } else {
+          const item = {
+            id: uid(),
+            date: r[idx("date")] || "",
+            desc: r[idx("description")] || "",
+            amount: parseFloat(r[idx("amount")]) || 0,
+            source: r[idx("source")] || "Other",
+            location: r[idx("location")] || "Other",
+            category: r[idx("category")] || "Misc",
+          };
+          const key = dupeKey(item);
+          if (seen.has(key)) { skipped++; return; }   // already present — skip to avoid duplicates
+          seen.add(key); items.push(item); added++;
+        }
       });
-      save(); render();
-      alert(`Imported ${added} new expense(s).` +
-        (skipped ? `\nSkipped ${skipped} duplicate(s) already in the app.` : ""));
+      save(); saveFunds(); render();
+      let msg = `Imported ${added} new expense(s)` + (fAdded ? ` and ${fAdded} funds entr${fAdded === 1 ? "y" : "ies"}` : "") + ".";
+      const totSkip = skipped + fSkipped;
+      if (totSkip) msg += `\nSkipped ${totSkip} duplicate(s) already in the app.`;
+      alert(msg);
     } catch (err) { alert("Could not read that CSV: " + err.message); }
     e.target.value = "";
   };
@@ -584,6 +691,68 @@ function updateRateNote() {
     note.textContent = "Rate last updated " + new Date(at).toLocaleDateString() +
       ". Used to show $ estimates — actual card charges may differ.";
   }
+}
+
+// ---- Funds / Wallet ----
+const fundForm = document.getElementById("fundForm");
+document.getElementById("fundDate").value = new Date().toISOString().slice(0,10);
+
+fundForm.addEventListener("submit", e => {
+  e.preventDefault();
+  const amt = parseFloat(document.getElementById("fundAmount").value) || 0;
+  if (amt <= 0) return;
+  funds.push({
+    id: uid(),
+    date: document.getElementById("fundDate").value,
+    amount: amt,
+    note: document.getElementById("fundNote").value.trim(),
+  });
+  saveFunds();
+  fundForm.reset();
+  document.getElementById("fundDate").value = new Date().toISOString().slice(0,10);
+  render();
+});
+
+function delFund(id) {
+  if (!confirm("Remove this funds entry?")) return;
+  funds = funds.filter(f => f.id !== id);
+  saveFunds();
+  render();
+}
+
+function renderFunds() {
+  const el = document.getElementById("fundList");
+  if (funds.length === 0) {
+    el.innerHTML = `<p class="muted-note">No funds added yet. Add your starting cash/budget above so “Funds available” can track what's left.</p>`;
+    return;
+  }
+  const sorted = [...funds].sort((a, b) => a.date < b.date ? 1 : a.date > b.date ? -1 : 0);
+  el.innerHTML = sorted.map(f => `
+    <div class="fund-row">
+      <span>${f.date}</span>
+      <span>${escapeHtml(f.note || "—")}</span>
+      <span class="f-amt">${fmt(f.amount)}</span>
+      <button class="danger" onclick="delFund('${f.id}')">✕</button>
+    </div>`).join("") +
+    `<div class="fund-total"><span>Total funds added</span><span>${fmt(fundsTotal())} <span class="usd-sub" style="display:inline;">(${usd(fundsTotal())})</span></span></div>`;
+}
+
+function updateFundsBanner() {
+  const banner = document.getElementById("fundsBanner");
+  const ft = fundsTotal(), avail = available();
+  let show = false, msg = "", danger = false;
+  if (ft > 0) {
+    if (avail < 0) {
+      show = true; danger = true;
+      msg = `⚠️ Over budget — you've spent ${fmt(-avail)} (${usd(-avail)}) more than the funds you've added. Add funds or rein in spending.`;
+    } else if (avail < ft * 0.1) {
+      show = true;
+      msg = `Heads up — only ${fmt(avail)} (${usd(avail)}) left of your funds. Consider topping up.`;
+    }
+  }
+  document.getElementById("fundsText").textContent = msg;
+  banner.classList.toggle("show", show);
+  banner.classList.toggle("danger", danger);
 }
 
 // ---- Backup reminder banner ----

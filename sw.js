@@ -1,6 +1,6 @@
 // Service worker: makes the app work offline by caching its files.
 // Bump CACHE version whenever you change index.html etc.
-const CACHE = "india-expenses-v3";
+const CACHE = "india-expenses-v4";
 const ASSETS = [
   "./",
   "index.html",
