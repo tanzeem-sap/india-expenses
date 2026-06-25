@@ -84,6 +84,17 @@
   .empty { text-align: center; color: var(--muted); padding: 30px 10px; }
   .footer-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
   .muted-note { font-size: .75rem; color: var(--muted); margin-top: 10px; }
+  .usd-sub { font-size: .72rem; color: var(--muted); font-weight: 400; margin-top: 2px; }
+  .banner {
+    display: none; align-items: center; gap: 10px; flex-wrap: wrap;
+    background: #fffbeb; border: 1px solid #fcd34d; color: #92400e;
+    border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; font-size: .88rem;
+  }
+  .banner.show { display: flex; }
+  .banner .b-text { flex: 1; min-width: 180px; }
+  .banner button { padding: 7px 12px; font-size: .82rem; }
+  .banner button.snooze { background: #fff; color: #92400e; border: 1px solid #fcd34d; }
+  #ratePanel form { align-items: end; }
   @media (max-width: 560px) {
     .hide-sm { display: none; }
   }
@@ -99,7 +110,31 @@
 
 <div class="wrap">
 
+  <div class="banner" id="backupBanner">
+    <span class="b-text" id="backupText"></span>
+    <button id="backupNow">⬇ Back up now</button>
+    <button class="snooze" id="backupLater">Later</button>
+  </div>
+
   <div class="cards" id="stats"></div>
+
+  <div class="panel" id="ratePanel">
+    <h2>💱 USD conversion</h2>
+    <form onsubmit="return false">
+      <div class="field">
+        <label for="rate">₹ per $1 (USD)</label>
+        <input type="number" id="rate" step="0.01" min="0">
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <button type="button" class="secondary" id="fetchRate">↻ Fetch latest rate</button>
+      </div>
+      <div class="field" style="flex:2; grid-column: span 2;">
+        <label>&nbsp;</label>
+        <span class="muted-note" id="rateNote" style="margin:0;"></span>
+      </div>
+    </form>
+  </div>
 
   <div class="panel">
     <h2>Add an expense</h2>
@@ -193,6 +228,11 @@
 
 <script>
 const KEY = "india_expenses_v1";
+const KEY_RATE = "india_expenses_inr_per_usd";
+const KEY_RATE_AT = "india_expenses_rate_at";
+const KEY_BACKUP = "india_expenses_backup_at";
+const KEY_SNOOZE = "india_expenses_backup_snooze";
+const DAY = 86400000;
 let items = load();
 let sortKey = "date", sortDir = -1;
 let editingId = null;
@@ -204,6 +244,12 @@ function load() {
 function save() { localStorage.setItem(KEY, JSON.stringify(items)); }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
 function fmt(n) { return "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+function getRate() { return parseFloat(localStorage.getItem(KEY_RATE)) || 85; }
+function usd(inr) {
+  const r = getRate();
+  if (!r) return "";
+  return "$" + (Number(inr) / r).toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+}
 
 // ---- Form ----
 const form = document.getElementById("form");
@@ -316,7 +362,7 @@ function render() {
         <td class="hide-sm"><span class="tag">${escapeHtml(i.category)}</span></td>
         <td class="hide-sm">${escapeHtml(i.location)}</td>
         <td class="hide-sm"><span class="src">${escapeHtml(i.source)}</span></td>
-        <td class="amt">${fmt(i.amount)}</td>
+        <td class="amt">${fmt(i.amount)}<div class="usd-sub">${usd(i.amount)}</div></td>
         <td style="white-space:nowrap;text-align:right;">
           <button class="danger" onclick="edit('${i.id}')">Edit</button>
           <button class="danger" onclick="del('${i.id}')">✕</button>
@@ -324,6 +370,7 @@ function render() {
       </tr>`).join("");
   }
   renderStats(list);
+  updateBanner();
 }
 
 function renderStats(list) {
@@ -333,8 +380,8 @@ function renderStats(list) {
   items.forEach(i => byLoc[i.location] = (byLoc[i.location]||0) + (+i.amount));
   const topLoc = Object.entries(byLoc).sort((a,b)=>b[1]-a[1])[0];
   document.getElementById("stats").innerHTML = `
-    <div class="stat"><div class="label">Total spent</div><div class="value">${fmt(total)}</div></div>
-    <div class="stat"><div class="label">Showing (filtered)</div><div class="value">${fmt(filtered)}</div></div>
+    <div class="stat"><div class="label">Total spent</div><div class="value">${fmt(total)}</div><div class="usd-sub">${usd(total)}</div></div>
+    <div class="stat"><div class="label">Showing (filtered)</div><div class="value">${fmt(filtered)}</div><div class="usd-sub">${usd(filtered)}</div></div>
     <div class="stat"><div class="label">Entries</div><div class="value">${items.length}</div></div>
     <div class="stat"><div class="label">Top location</div><div class="value">${topLoc ? escapeHtml(topLoc[0]) : "—"}</div></div>
   `;
@@ -354,6 +401,9 @@ document.getElementById("exportBtn").addEventListener("click", () => {
   a.href = URL.createObjectURL(blob);
   a.download = "india-expenses-" + new Date().toISOString().slice(0,10) + ".csv";
   a.click();
+  localStorage.setItem(KEY_BACKUP, Date.now());
+  localStorage.removeItem(KEY_SNOOZE);
+  updateBanner();
 });
 function csvCell(v) {
   v = String(v);
@@ -415,6 +465,82 @@ document.getElementById("clearBtn").addEventListener("click", () => {
   if (!confirm("Delete ALL expenses? This cannot be undone.")) return;
   items = []; save(); render();
 });
+
+// ---- Currency / exchange rate ----
+const rateInput = document.getElementById("rate");
+rateInput.value = getRate();
+updateRateNote();
+
+rateInput.addEventListener("input", () => {
+  const v = parseFloat(rateInput.value);
+  if (v > 0) {
+    localStorage.setItem(KEY_RATE, v);
+    localStorage.setItem(KEY_RATE_AT, Date.now());
+    updateRateNote();
+    render();
+  }
+});
+
+document.getElementById("fetchRate").addEventListener("click", async () => {
+  const btn = document.getElementById("fetchRate");
+  const old = btn.textContent;
+  btn.textContent = "Fetching…"; btn.disabled = true;
+  try {
+    const r = await fetch("https://open.er-api.com/v6/latest/USD");
+    const j = await r.json();
+    const inrPerUsd = j && j.rates && j.rates.INR;
+    if (inrPerUsd) {
+      localStorage.setItem(KEY_RATE, inrPerUsd);
+      localStorage.setItem(KEY_RATE_AT, Date.now());
+      rateInput.value = (Math.round(inrPerUsd * 100) / 100);
+      updateRateNote();
+      render();
+    } else { throw new Error("no rate"); }
+  } catch {
+    alert("Couldn't fetch the latest rate (you may be offline). You can type the rate in manually.");
+  } finally {
+    btn.textContent = old; btn.disabled = false;
+  }
+});
+
+function updateRateNote() {
+  const at = +localStorage.getItem(KEY_RATE_AT) || 0;
+  const note = document.getElementById("rateNote");
+  if (!at) {
+    note.textContent = "Using a manual rate. Tap “Fetch latest” when online to update it.";
+  } else {
+    note.textContent = "Rate last updated " + new Date(at).toLocaleDateString() +
+      ". Used to show $ estimates — actual card charges may differ.";
+  }
+}
+
+// ---- Backup reminder banner ----
+document.getElementById("backupNow").addEventListener("click", () => document.getElementById("exportBtn").click());
+document.getElementById("backupLater").addEventListener("click", () => {
+  localStorage.setItem(KEY_SNOOZE, Date.now() + DAY);
+  updateBanner();
+});
+
+function updateBanner() {
+  const banner = document.getElementById("backupBanner");
+  const last = +localStorage.getItem(KEY_BACKUP) || 0;
+  const snooze = +localStorage.getItem(KEY_SNOOZE) || 0;
+  let show = false, msg = "";
+  if (items.length >= 3 && Date.now() >= snooze) {
+    if (last === 0) {
+      show = true;
+      msg = "You haven't backed up yet. Export a CSV copy so your expenses are safe if this app's data is cleared.";
+    } else {
+      const days = Math.floor((Date.now() - last) / DAY);
+      if (days >= 3) {
+        show = true;
+        msg = `It's been ${days} day${days === 1 ? "" : "s"} since your last backup. Export a fresh CSV to stay safe.`;
+      }
+    }
+  }
+  document.getElementById("backupText").textContent = msg;
+  banner.classList.toggle("show", show);
+}
 
 render();
 

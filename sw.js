@@ -1,6 +1,6 @@
 // Service worker: makes the app work offline by caching its files.
 // Bump CACHE version whenever you change index.html etc.
-const CACHE = "india-expenses-v1";
+const CACHE = "india-expenses-v2";
 const ASSETS = [
   "./",
   "index.html",
@@ -25,6 +25,8 @@ self.addEventListener("activate", e => {
 // Cache-first: serve from cache, fall back to network. Works fully offline.
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
+  // Let cross-origin requests (e.g. live exchange-rate API) go straight to the network.
+  if (new URL(e.request.url).origin !== self.location.origin) return;
   e.respondWith(
     caches.match(e.request).then(cached =>
       cached || fetch(e.request).then(resp => {
