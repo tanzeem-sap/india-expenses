@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>India Trip Expenses</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#ff6b35">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="India Expenses">
+<style>
+  :root {
+    --bg: #f4f5f7;
+    --card: #ffffff;
+    --ink: #1f2933;
+    --muted: #6b7280;
+    --line: #e5e7eb;
+    --accent: #ff6b35;
+    --accent2: #138808;
+    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.04);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    background: linear-gradient(135deg, var(--accent) 0%, #ff9f1c 100%);
+    color: #fff;
+    padding: 20px 16px;
+  }
+  header h1 { margin: 0; font-size: 1.4rem; }
+  header p { margin: 4px 0 0; opacity: .9; font-size: .85rem; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 16px; }
+
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .stat {
+    background: var(--card); border-radius: 12px; padding: 14px 16px; box-shadow: var(--shadow);
+  }
+  .stat .label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .stat .value { font-size: 1.35rem; font-weight: 700; margin-top: 4px; }
+
+  .panel { background: var(--card); border-radius: 12px; padding: 16px; box-shadow: var(--shadow); margin-bottom: 16px; }
+  .panel h2 { margin: 0 0 12px; font-size: 1rem; }
+
+  form { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; align-items: end; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field.wide { grid-column: 1 / -1; }
+  label { font-size: .75rem; color: var(--muted); font-weight: 600; }
+  input, select, button { font-size: .9rem; font-family: inherit; }
+  input, select {
+    padding: 9px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; color: var(--ink);
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; border-color: var(--accent); }
+  button {
+    padding: 10px 16px; border: none; border-radius: 8px; background: var(--accent2); color: #fff;
+    font-weight: 600; cursor: pointer;
+  }
+  button:hover { filter: brightness(1.05); }
+  button.secondary { background: #fff; color: var(--ink); border: 1px solid var(--line); }
+  button.danger { background: #fff; color: #b91c1c; border: 1px solid var(--line); padding: 4px 8px; font-size: .8rem; }
+
+  .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+  .toolbar .grow { flex: 1; }
+  .toolbar select, .toolbar input { padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+  th, td { padding: 9px 8px; text-align: left; border-bottom: 1px solid var(--line); }
+  th { font-size: .72rem; text-transform: uppercase; letter-spacing: .03em; color: var(--muted); cursor: pointer; user-select: none; }
+  th:hover { color: var(--ink); }
+  td.amt, th.amt { text-align: right; font-variant-numeric: tabular-nums; }
+  tr:hover td { background: #fafafa; }
+  .tag {
+    display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: .72rem; font-weight: 600;
+    background: #eef2ff; color: #3730a3;
+  }
+  .src { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: .72rem; background: #f0fdf4; color: #166534; }
+  .empty { text-align: center; color: var(--muted); padding: 30px 10px; }
+  .footer-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+  .muted-note { font-size: .75rem; color: var(--muted); margin-top: 10px; }
+  @media (max-width: 560px) {
+    .hide-sm { display: none; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap" style="padding-top:0;padding-bottom:0;">
+    <h1>🇮🇳 India Trip Expenses</h1>
+    <p>Track spending across Lucknow, Delhi, Allahabad and beyond. Saved on this device.</p>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="cards" id="stats"></div>
+
+  <div class="panel">
+    <h2>Add an expense</h2>
+    <form id="form">
+      <div class="field">
+        <label for="date">Date</label>
+        <input type="date" id="date" required>
+      </div>
+      <div class="field" style="flex:2; grid-column: span 2;">
+        <label for="desc">Description</label>
+        <input type="text" id="desc" placeholder="e.g. Auto to railway station" required>
+      </div>
+      <div class="field">
+        <label for="amount">Amount (₹)</label>
+        <input type="number" id="amount" step="0.01" min="0" placeholder="0.00" required>
+      </div>
+      <div class="field">
+        <label for="source">Paid via</label>
+        <select id="source">
+          <option>UPI</option>
+          <option>Cash</option>
+          <option>Credit Card (India)</option>
+          <option>US Credit Card</option>
+          <option>Debit Card</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="location">Location</label>
+        <select id="location">
+          <option>Lucknow</option>
+          <option>Delhi</option>
+          <option>Allahabad</option>
+          <option>Other</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="category">Category</label>
+        <select id="category">
+          <option>Food</option>
+          <option>Transport</option>
+          <option>Lodging</option>
+          <option>Shopping</option>
+          <option>Gifts</option>
+          <option>Sightseeing</option>
+          <option>Groceries</option>
+          <option>Health</option>
+          <option>Misc</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>&nbsp;</label>
+        <button type="submit" id="submitBtn">Add expense</button>
+      </div>
+    </form>
+  </div>
+
+  <div class="panel">
+    <div class="toolbar">
+      <input type="search" id="search" class="grow" placeholder="Search description…">
+      <select id="filterLocation"><option value="">All locations</option></select>
+      <select id="filterCategory"><option value="">All categories</option></select>
+      <select id="filterSource"><option value="">All sources</option></select>
+    </div>
+    <div style="overflow-x:auto;">
+      <table id="table">
+        <thead>
+          <tr>
+            <th data-sort="date">Date</th>
+            <th data-sort="desc">Description</th>
+            <th data-sort="category" class="hide-sm">Category</th>
+            <th data-sort="location" class="hide-sm">Location</th>
+            <th data-sort="source" class="hide-sm">Via</th>
+            <th data-sort="amount" class="amt">Amount</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+    <div class="footer-actions">
+      <button class="secondary" id="exportBtn">⬇ Export CSV</button>
+      <button class="secondary" id="importBtn">⬆ Import CSV</button>
+      <input type="file" id="importFile" accept=".csv" style="display:none">
+      <button class="secondary" id="clearBtn" style="color:#b91c1c;">Clear all</button>
+    </div>
+    <p class="muted-note">Data lives only in this browser (localStorage). Export to CSV regularly to back it up.</p>
+  </div>
+
+</div>
+
+<script>
+const KEY = "india_expenses_v1";
+let items = load();
+let sortKey = "date", sortDir = -1;
+let editingId = null;
+
+function load() {
+  try { return JSON.parse(localStorage.getItem(KEY)) || []; }
+  catch { return []; }
+}
+function save() { localStorage.setItem(KEY, JSON.stringify(items)); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+function fmt(n) { return "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
+
+// ---- Form ----
+const form = document.getElementById("form");
+document.getElementById("date").value = new Date().toISOString().slice(0,10);
+
+form.addEventListener("submit", e => {
+  e.preventDefault();
+  const item = {
+    id: editingId || uid(),
+    date: document.getElementById("date").value,
+    desc: document.getElementById("desc").value.trim(),
+    amount: parseFloat(document.getElementById("amount").value) || 0,
+    source: document.getElementById("source").value,
+    location: document.getElementById("location").value,
+    category: document.getElementById("category").value,
+  };
+  if (editingId) {
+    items = items.map(i => i.id === editingId ? item : i);
+    editingId = null;
+    document.getElementById("submitBtn").textContent = "Add expense";
+  } else {
+    items.push(item);
+  }
+  save();
+  form.reset();
+  document.getElementById("date").value = new Date().toISOString().slice(0,10);
+  document.getElementById("desc").focus();
+  render();
+});
+
+function edit(id) {
+  const it = items.find(i => i.id === id);
+  if (!it) return;
+  document.getElementById("date").value = it.date;
+  document.getElementById("desc").value = it.desc;
+  document.getElementById("amount").value = it.amount;
+  document.getElementById("source").value = it.source;
+  document.getElementById("location").value = it.location;
+  document.getElementById("category").value = it.category;
+  editingId = id;
+  document.getElementById("submitBtn").textContent = "Save changes";
+  window.scrollTo({top: 0, behavior: "smooth"});
+}
+
+function del(id) {
+  if (!confirm("Delete this expense?")) return;
+  items = items.filter(i => i.id !== id);
+  save();
+  render();
+}
+
+// ---- Filters & sorting ----
+["search","filterLocation","filterCategory","filterSource"].forEach(id =>
+  document.getElementById(id).addEventListener("input", render));
+
+document.querySelectorAll("th[data-sort]").forEach(th =>
+  th.addEventListener("click", () => {
+    const k = th.dataset.sort;
+    if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = 1; }
+    render();
+  }));
+
+function visibleItems() {
+  const q = document.getElementById("search").value.toLowerCase();
+  const fl = document.getElementById("filterLocation").value;
+  const fc = document.getElementById("filterCategory").value;
+  const fs = document.getElementById("filterSource").value;
+  let list = items.filter(i =>
+    (!q || i.desc.toLowerCase().includes(q)) &&
+    (!fl || i.location === fl) &&
+    (!fc || i.category === fc) &&
+    (!fs || i.source === fs)
+  );
+  list.sort((a,b) => {
+    let x = a[sortKey], y = b[sortKey];
+    if (sortKey === "amount") { x = +x; y = +y; }
+    else { x = String(x).toLowerCase(); y = String(y).toLowerCase(); }
+    return x < y ? -sortDir : x > y ? sortDir : 0;
+  });
+  return list;
+}
+
+function refreshFilterOptions() {
+  const sets = { location: new Set(), category: new Set(), source: new Set() };
+  items.forEach(i => { sets.location.add(i.location); sets.category.add(i.category); sets.source.add(i.source); });
+  fillSelect("filterLocation", sets.location, "All locations");
+  fillSelect("filterCategory", sets.category, "All categories");
+  fillSelect("filterSource", sets.source, "All sources");
+}
+function fillSelect(id, set, allLabel) {
+  const el = document.getElementById(id);
+  const cur = el.value;
+  el.innerHTML = `<option value="">${allLabel}</option>` +
+    [...set].sort().map(v => `<option>${escapeHtml(v)}</option>`).join("");
+  el.value = cur;
+}
+
+// ---- Render ----
+function render() {
+  refreshFilterOptions();
+  const list = visibleItems();
+  const rows = document.getElementById("rows");
+  if (list.length === 0) {
+    rows.innerHTML = `<tr><td colspan="7" class="empty">No expenses yet. Add your first one above.</td></tr>`;
+  } else {
+    rows.innerHTML = list.map(i => `
+      <tr>
+        <td>${i.date}</td>
+        <td>${escapeHtml(i.desc)}</td>
+        <td class="hide-sm"><span class="tag">${escapeHtml(i.category)}</span></td>
+        <td class="hide-sm">${escapeHtml(i.location)}</td>
+        <td class="hide-sm"><span class="src">${escapeHtml(i.source)}</span></td>
+        <td class="amt">${fmt(i.amount)}</td>
+        <td style="white-space:nowrap;text-align:right;">
+          <button class="danger" onclick="edit('${i.id}')">Edit</button>
+          <button class="danger" onclick="del('${i.id}')">✕</button>
+        </td>
+      </tr>`).join("");
+  }
+  renderStats(list);
+}
+
+function renderStats(list) {
+  const total = items.reduce((s,i) => s + (+i.amount), 0);
+  const filtered = list.reduce((s,i) => s + (+i.amount), 0);
+  const byLoc = {};
+  items.forEach(i => byLoc[i.location] = (byLoc[i.location]||0) + (+i.amount));
+  const topLoc = Object.entries(byLoc).sort((a,b)=>b[1]-a[1])[0];
+  document.getElementById("stats").innerHTML = `
+    <div class="stat"><div class="label">Total spent</div><div class="value">${fmt(total)}</div></div>
+    <div class="stat"><div class="label">Showing (filtered)</div><div class="value">${fmt(filtered)}</div></div>
+    <div class="stat"><div class="label">Entries</div><div class="value">${items.length}</div></div>
+    <div class="stat"><div class="label">Top location</div><div class="value">${topLoc ? escapeHtml(topLoc[0]) : "—"}</div></div>
+  `;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+}
+
+// ---- CSV export / import ----
+document.getElementById("exportBtn").addEventListener("click", () => {
+  const header = ["date","description","amount","source","location","category"];
+  const rows = items.map(i => [i.date, i.desc, i.amount, i.source, i.location, i.category]);
+  const csv = [header, ...rows].map(r => r.map(csvCell).join(",")).join("\n");
+  const blob = new Blob([csv], {type: "text/csv"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "india-expenses-" + new Date().toISOString().slice(0,10) + ".csv";
+  a.click();
+});
+function csvCell(v) {
+  v = String(v);
+  return /[",\n]/.test(v) ? '"' + v.replace(/"/g,'""') + '"' : v;
+}
+
+document.getElementById("importBtn").addEventListener("click", () => document.getElementById("importFile").click());
+document.getElementById("importFile").addEventListener("change", e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const rows = parseCSV(reader.result);
+      const header = rows.shift().map(h => h.toLowerCase().trim());
+      const idx = n => header.indexOf(n);
+      let added = 0;
+      rows.forEach(r => {
+        if (r.length === 1 && r[0] === "") return;
+        items.push({
+          id: uid(),
+          date: r[idx("date")] || "",
+          desc: r[idx("description")] || "",
+          amount: parseFloat(r[idx("amount")]) || 0,
+          source: r[idx("source")] || "Other",
+          location: r[idx("location")] || "Other",
+          category: r[idx("category")] || "Misc",
+        });
+        added++;
+      });
+      save(); render();
+      alert(`Imported ${added} expense(s).`);
+    } catch (err) { alert("Could not read that CSV: " + err.message); }
+    e.target.value = "";
+  };
+  reader.readAsText(file);
+});
+function parseCSV(text) {
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"' && text[i+1] === '"') { cell += '"'; i++; }
+      else if (c === '"') q = false;
+      else cell += c;
+    } else {
+      if (c === '"') q = true;
+      else if (c === ",") { row.push(cell); cell = ""; }
+      else if (c === "\n") { row.push(cell); rows.push(row); row = []; cell = ""; }
+      else if (c === "\r") { /* skip */ }
+      else cell += c;
+    }
+  }
+  if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+  return rows;
+}
+
+document.getElementById("clearBtn").addEventListener("click", () => {
+  if (!confirm("Delete ALL expenses? This cannot be undone.")) return;
+  items = []; save(); render();
+});
+
+render();
+
+// Register service worker so the app works offline once loaded.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
