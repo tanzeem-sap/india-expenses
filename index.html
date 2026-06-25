@@ -243,6 +243,10 @@ function load() {
 }
 function save() { localStorage.setItem(KEY, JSON.stringify(items)); }
 function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+// Content fingerprint used to detect duplicate rows on import (ignores the random id).
+function dupeKey(i) {
+  return [i.date, String(i.desc).trim().toLowerCase(), (+i.amount).toFixed(2), i.source, i.location, i.category].join("|");
+}
 function fmt(n) { return "₹" + Number(n).toLocaleString("en-IN", {minimumFractionDigits: 2, maximumFractionDigits: 2}); }
 function getRate() { return parseFloat(localStorage.getItem(KEY_RATE)) || 85; }
 function usd(inr) {
@@ -399,7 +403,7 @@ document.getElementById("exportBtn").addEventListener("click", () => {
   const blob = new Blob([csv], {type: "text/csv"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "india-expenses-" + new Date().toISOString().slice(0,10) + ".csv";
+  a.download = "india-expenses.csv";
   a.click();
   localStorage.setItem(KEY_BACKUP, Date.now());
   localStorage.removeItem(KEY_SNOOZE);
@@ -420,10 +424,11 @@ document.getElementById("importFile").addEventListener("change", e => {
       const rows = parseCSV(reader.result);
       const header = rows.shift().map(h => h.toLowerCase().trim());
       const idx = n => header.indexOf(n);
-      let added = 0;
+      const seen = new Set(items.map(dupeKey));
+      let added = 0, skipped = 0;
       rows.forEach(r => {
         if (r.length === 1 && r[0] === "") return;
-        items.push({
+        const item = {
           id: uid(),
           date: r[idx("date")] || "",
           desc: r[idx("description")] || "",
@@ -431,11 +436,16 @@ document.getElementById("importFile").addEventListener("change", e => {
           source: r[idx("source")] || "Other",
           location: r[idx("location")] || "Other",
           category: r[idx("category")] || "Misc",
-        });
+        };
+        const key = dupeKey(item);
+        if (seen.has(key)) { skipped++; return; }   // already present — skip to avoid duplicates
+        seen.add(key);
+        items.push(item);
         added++;
       });
       save(); render();
-      alert(`Imported ${added} expense(s).`);
+      alert(`Imported ${added} new expense(s).` +
+        (skipped ? `\nSkipped ${skipped} duplicate(s) already in the app.` : ""));
     } catch (err) { alert("Could not read that CSV: " + err.message); }
     e.target.value = "";
   };
